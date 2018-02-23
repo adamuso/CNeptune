@@ -48,7 +48,7 @@ namespace CNeptune
                                     case "Library": Program.Manage(string.Concat(_directory, _element.Value, _name, ".dll")); return;
                                     case "WinExe":
                                     case "Exe": Program.Manage(string.Concat(_directory, _element.Value, _name, ".exe")); return;
-                                    default: throw new NotSupportedException($"Unknown OutputType: {_type.Value}");
+                                    default: throw new NotSupportedException(string.Format("Unknown OutputType: {0}", _type.Value));
                                 }
                             }
                         }
@@ -70,7 +70,12 @@ namespace CNeptune
 
         static private bool Bypass(TypeDefinition type)
         {
-            return type.IsInterface || type.IsValueType || type.Name == Program.Module || (type.BaseType != null && type.BaseType.Resolve() == type.Module.Import(typeof(MulticastDelegate)).Resolve());
+            return type.IsInterface 
+                || type.IsValueType 
+                || type.Name == Program.Module 
+                || (type.BaseType != null && type.BaseType.Resolve() == type.Module.Import(typeof(MulticastDelegate)).Resolve())
+                || !type.HasCustomAttributes
+                || type.CustomAttributes.All(attr => attr.AttributeType.Name != "UseAspectOrientedProgrammingAttribute");
         }
 
         static private bool Bypass(MethodDefinition method)
@@ -106,11 +111,29 @@ namespace CNeptune
             var _type = method.DeclaringType.Authority("<Authentic>");
             var _copy = new Copy(method);
             var _method = _type.Method(method.IsConstructor ? "<Constructor>" : method.Name, MethodAttributes.Static | MethodAttributes.Public);
-            foreach (var _parameter in method.GenericParameters) { _method.GenericParameters.Add(new GenericParameter(_parameter.Name, _method)); }
+            foreach (var _parameter in method.GenericParameters)
+            {
+                var _param = new GenericParameter(_parameter.Name, _method);
+
+                foreach(var _constraint in _parameter.Constraints)
+                    _param.Constraints.Add(_constraint);
+
+                _param.HasDefaultConstructorConstraint = _parameter.HasDefaultConstructorConstraint;
+                _param.HasReferenceTypeConstraint = _parameter.HasReferenceTypeConstraint;
+                _param.HasNotNullableValueTypeConstraint = _parameter.HasNotNullableValueTypeConstraint;
+                _param.IsContravariant = _parameter.IsContravariant;
+                _param.IsCovariant = _parameter.IsCovariant;
+                _param.IsNonVariant = _parameter.IsNonVariant;
+
+                _method.GenericParameters.Add(_param);
+            }
             _copy.Genericity = _method.GenericParameters.ToArray();
             _method.ReturnType = _copy[method.ReturnType];
             if (!method.IsStatic) { _method.Parameters.Add(new ParameterDefinition("this", ParameterAttributes.None, method.DeclaringType)); }
-            foreach (var _parameter in method.Parameters) { _method.Add(new ParameterDefinition(_parameter.Name, _parameter.Attributes, _copy[_parameter.ParameterType])); }
+            foreach (var _parameter in method.Parameters)
+            { 
+                _method.Add(new ParameterDefinition(_parameter.Name, _parameter.Attributes, _copy[_parameter.ParameterType]));
+            }
             _copy.Signature = _method.Parameters.ToArray();
             var _body = _method.Body;
             _body.InitLocals = method.Body.InitLocals;
@@ -142,7 +165,7 @@ namespace CNeptune
 
         static private FieldDefinition Intermediate(this MethodDefinition method, MethodDefinition authentic)
         {
-            var _intermediate = method.DeclaringType.Authority("<Intermediate>").Type(method.IsConstructor ? $"<<Constructor>>" : $"<{method.Name}>", TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.Abstract | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit);
+            var _intermediate = method.DeclaringType.Authority("<Intermediate>").Type(method.IsConstructor ? "<<Constructor>>" : string.Format("<{0}>", method.Name), TypeAttributes.NestedPublic | TypeAttributes.Class | TypeAttributes.Abstract | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit);
             foreach (var _parameter in method.GenericParameters) { _intermediate.GenericParameters.Add(new GenericParameter(_parameter.Name, _intermediate)); }
             var _field = _intermediate.Field<IntPtr>(Program.Pointer, FieldAttributes.Static | FieldAttributes.Public);
             var _initializer = _intermediate.Initializer();

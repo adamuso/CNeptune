@@ -96,6 +96,24 @@ namespace Mono.Cecil
         {
             var _type = new TypeDefinition(null, name, attributes, type.Module.TypeSystem.Object);
             type.NestedTypes.Add(_type);
+
+            foreach (var _parameter in type.GenericParameters)
+            {
+                var _param = new GenericParameter(_parameter.Name, _type);
+
+                foreach (var _constraint in _parameter.Constraints)
+                    _param.Constraints.Add(_constraint);
+
+                _param.HasDefaultConstructorConstraint = _parameter.HasDefaultConstructorConstraint;
+                _param.HasReferenceTypeConstraint = _parameter.HasReferenceTypeConstraint;
+                _param.HasNotNullableValueTypeConstraint = _parameter.HasNotNullableValueTypeConstraint;
+                _param.IsContravariant = _parameter.IsContravariant;
+                _param.IsCovariant = _parameter.IsCovariant;
+                _param.IsNonVariant = _parameter.IsNonVariant;
+
+                _type.GenericParameters.Add(_param);
+            }
+
             _type.Attribute<CompilerGeneratedAttribute>();
             _type.Attribute<SerializableAttribute>();
             return _type;
